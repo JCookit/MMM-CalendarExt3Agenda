@@ -612,7 +612,8 @@ Module.register('MMM-CalendarExt3Agenda', {
       maximumNumberOfDays: this.activeConfig.maximumNumberOfDays,
       pastDaysCount: this.activeConfig.pastDaysCount,
       broadcastPastEvents: this.activeConfig.broadcastPastEvents,
-      excludedEvents: this.activeConfig.excludedEvents
+      excludedEvents: this.activeConfig.excludedEvents,
+      eventTransformer: this.activeConfig.eventTransformer
     });
   },
 

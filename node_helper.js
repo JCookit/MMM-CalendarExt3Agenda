@@ -465,6 +465,11 @@ class CalendarFetcher {
 			color: this.config.color
 		};
 
+        // Apply event transformer if configured
+        if (typeof this.config.eventTransformer === 'function') {
+            eventObj = this.config.eventTransformer(eventObj);
+        }
+
 		// Add symbol array like the builtin calendar module
 		eventObj.symbol = this.symbolsForEvent(eventObj);
 		
