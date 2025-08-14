@@ -659,18 +659,18 @@ Module.register('MMM-CalendarExt3Agenda', {
   /**
    * Override suspend to stop calendar fetching
    */
-  suspend: function() {
-    Log.info(`[${this.name}] Module suspended`);
-    this.stopCalendarFetching();
-  },
+  // suspend: function() {
+  //   Log.info(`[${this.name}] Module suspended`);
+  //   this.stopCalendarFetching();
+  // },
 
   /**
    * Override resume to restart calendar fetching
    */
-  resume: function() {
-    Log.info(`[${this.name}] Module resumed`);
-    if (this.activeConfig.calendars && this.activeConfig.calendars.length > 0 && !this.activeConfig.useExternalCalendarModule) {
-      this.startCalendarFetching();
-    }
-  }
+  // resume: function() {
+  //   Log.info(`[${this.name}] Module resumed`);
+  //   if (this.activeConfig.calendars && this.activeConfig.calendars.length > 0 && !this.activeConfig.useExternalCalendarModule) {
+  //     this.startCalendarFetching();
+  //   }
+  // }
 })

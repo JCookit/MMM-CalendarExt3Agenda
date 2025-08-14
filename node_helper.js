@@ -114,7 +114,7 @@ module.exports = NodeHelper.create({
 		
 		if (this.fetchers[fetcherKey]) {
 			Log.warn(`[${this.name}] Fetcher already exists for: ${config.url}`);
-            this.fetchers[fetcherKey].fetchCalendar();
+//            this.fetchers[fetcherKey].fetchCalendar();  // put this back in to refresh the display on a browser f5
 			return;
 		}
 

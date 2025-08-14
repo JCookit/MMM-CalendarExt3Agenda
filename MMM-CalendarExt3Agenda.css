@@ -5,7 +5,7 @@
 }
 
 .CX3A {
-  font-size: 0.9em;
+  font-size: 0.8em;
   min-width: 300px;
 /*  max-width: 400px; */
   text-align: left;
@@ -18,7 +18,7 @@
   --weekend_2_color: crimson;
   
   /* Time-of-day dot colors for mini-calendar */
-  --morningDotColor: gold;
+  --morningDotColor: rgb(246, 255, 0);
   --afternoonDotColor: orange;
   --eveningDotColor: crimson;
 }
@@ -34,8 +34,8 @@
   position: relative;
 /*  max-height: 600px; */
   overflow-y: hidden;
-/*  mask-image: linear-gradient(to bottom, transparent, black 10%); */
-/*  -webkit-mask-image: -webkit-linear-gradient(90deg, transparent, black 10%);*/
+  /* mask-image: linear-gradient(to bottom, transparent, black 10%);  */
+  /* -webkit-mask-image: -webkit-linear-gradient(90deg, transparent, black 10%); */
 }
 
 /*
@@ -48,7 +48,7 @@
   content: " ";
   background-image: linear-gradient(to bottom, transparent, black);
 }
-*/
+  */
 
 .CX3A .cellBody {
   line-height: 105%;
@@ -268,6 +268,7 @@
   max-width: 100%;
   overflow: hidden;
   position: relative; /* Enable layering */
+  min-height: 5px;
 }
 
 /* Background layer for all-day events */
@@ -279,7 +280,7 @@
   width: 20px;
   height: 5px;
   background-color: var(--calendarColor);
-  opacity: 0.3;
+  opacity: 0.5;
   border-radius: 2px;
   z-index: 1;
 }
@@ -342,6 +343,15 @@
   text-align: center;
 }
 
+.CX3A .miniMonth thead th {
+  border-bottom: 1px solid gray;
+}
+
+.CX3A .miniMonth thead th.weekname {
+  vertical-align: top;
+/*   line-height: 1; */
+}
+
 /*
 .CX3A .miniMonth .weekday_0 {
   color: var(--sundayColor);
@@ -367,6 +377,7 @@
   font-size: 80%;
   color: gray;
   vertical-align: top;
+  width: 2em !important;
 
   /* display: none; */
 }
@@ -383,7 +394,7 @@
 .CX3A .miniMonth caption {
   caption-side: top;
   font-size: 100%;
-  text-align: right;
+  text-align: left;
   font-weight: bold;
 }
 
