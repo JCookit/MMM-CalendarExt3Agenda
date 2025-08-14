@@ -494,13 +494,68 @@ Module.register('MMM-CalendarExt3Agenda', {
             return ((a.endDate - a.startDate) === (b.endDate - b.startDate))
               ? (a.startDate === b.startDate) ? a.endDate - b.endDate : a.startDate - b.startDate
               : (b.endDate - b.startDate) - (a.endDate - a.startDate)
-          }).forEach((ev) => {
-            let dot = document.createElement('div')
-            dot.classList.add('eventDot')
-            dot.style.setProperty('--calendarColor', ev.color)
-            dot.innerHTML = '⬤'
-            evs.appendChild(dot)
           })
+          
+          // Categorize events by time of day
+          const timeSlots = {
+            morning: false,    // 6:00 - 11:59
+            afternoon: false,  // 12:00 - 17:59  
+            evening: false,    // 18:00 - 23:59 (and 0:00 - 5:59)
+            allDay: false,
+            calendarColor: null
+          }
+          
+          events.filter((ev) => {
+            return !(+(ev.endDate) <= dm.getTime() || +(ev.startDate) >= edm.getTime())
+          }).forEach((ev) => {
+            if (ev.isFullday) {
+              timeSlots.allDay = true
+              timeSlots.calendarColor = ev.color
+            } else {
+              const startHour = new Date(ev.startDate).getHours()
+              if (startHour >= 6 && startHour < 12) {
+                timeSlots.morning = true
+              } else if (startHour >= 12 && startHour < 18) {
+                timeSlots.afternoon = true
+              } else {
+                timeSlots.evening = true
+              }
+            }
+          })
+          
+          // Create layered dots: background layer for all-day, foreground for time-of-day
+          
+          // Create background layer for all-day events
+          if (timeSlots.allDay) {
+            let backgroundLayer = document.createElement('div')
+            backgroundLayer.classList.add('eventDotBackground')
+            backgroundLayer.style.setProperty('--calendarColor', timeSlots.calendarColor)
+            evs.appendChild(backgroundLayer)
+          }
+          
+          // Create foreground dots for time-of-day (always show all three positions)
+          const periods = [
+            { active: timeSlots.morning, class: 'morning' },
+            { active: timeSlots.afternoon, class: 'afternoon' }, 
+            { active: timeSlots.evening, class: 'evening' }
+          ]
+          
+          let foregroundLayer = document.createElement('div')
+          foregroundLayer.classList.add('eventDotForeground')
+          
+          periods.forEach(period => {
+            let dot = document.createElement('div')
+            dot.classList.add('eventDot', period.class)
+            if (period.active) {
+              dot.innerHTML = '⬤'
+            } else {
+              dot.innerHTML = '&nbsp;' // Empty space
+              dot.classList.add('empty')
+            }
+            foregroundLayer.appendChild(dot)
+          })
+          
+          evs.appendChild(foregroundLayer)
           content.appendChild(date)
           content.appendChild(evs)
           dc.appendChild(content)

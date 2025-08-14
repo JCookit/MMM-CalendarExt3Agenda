@@ -46,6 +46,14 @@
     defaultSymbolClassName: "fas fa-", // CSS class prefix
     recurringSymbol: "fa-repeat", // Icon for recurring events
     fullDaySymbol: "fa-clock", // Icon for full day events
+    
+    // Mini-calendar dots represent time-of-day periods:
+    // First dot: morning (6:00-11:59) - default gold
+    // Second dot: afternoon (12:00-17:59) - default orange  
+    // Third dot: evening (18:00-5:59) - default crimson
+    // All-day events show three dots in calendar color
+    // Customize colors in CSS with --morningDotColor, --afternoonDotColor, --eveningDotColor
+    
     customEvents: [
       {
         keyword: "meeting",

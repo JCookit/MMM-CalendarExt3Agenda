@@ -5,9 +5,9 @@
 }
 
 .CX3A {
-  /*font-size: 16px;*/
+  font-size: 0.9em;
   min-width: 300px;
-  max-width: 400px;
+/*  max-width: 400px; */
   text-align: left;
   color: lightgray;
 
@@ -16,12 +16,18 @@
   --todayColor: gold;
   --weekend_1_color: dodgerblue;
   --weekend_2_color: crimson;
+  
+  /* Time-of-day dot colors for mini-calendar */
+  --morningDotColor: gold;
+  --afternoonDotColor: orange;
+  --eveningDotColor: crimson;
 }
 
 .CX3A.bodice {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 100%;
 }
 
 .CX3A .agenda {
@@ -190,7 +196,7 @@
   max-width: 100%;
   font-size: 80%;
   color: darkgray;
-  text-align: right;
+  text-align: left;
 }
 
 .CX3A .event .time {
@@ -261,6 +267,31 @@
   text-overflow: clip;
   max-width: 100%;
   overflow: hidden;
+  position: relative; /* Enable layering */
+}
+
+/* Background layer for all-day events */
+.CX3A .miniMonth .cell .events .eventDotBackground {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 5px;
+  background-color: var(--calendarColor);
+  opacity: 0.3;
+  border-radius: 2px;
+  z-index: 1;
+}
+
+/* Foreground layer for time-of-day dots */
+.CX3A .miniMonth .cell .events .eventDotForeground {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 2px;
+  position: relative;
+  z-index: 2;
 }
 
 .CX3A .miniMonth .cell .events .eventDot {
@@ -269,6 +300,29 @@
   color: var(--calendarColor);
   font-size: 4px;
   line-height: 100%;
+}
+
+/* Time-of-day specific dot colors */
+.CX3A .miniMonth .cell .events .eventDot.morning {
+  color: var(--morningDotColor);
+}
+
+.CX3A .miniMonth .cell .events .eventDot.afternoon {
+  color: var(--afternoonDotColor);
+}
+
+.CX3A .miniMonth .cell .events .eventDot.evening {
+  color: var(--eveningDotColor);
+}
+
+/* All-day events use calendar color */
+.CX3A .miniMonth .cell .events .eventDot.allDay {
+  color: var(--calendarColor);
+}
+
+/* Empty dots (for spacing) */
+.CX3A .miniMonth .cell .events .eventDot.empty {
+  opacity: 0;
 }
 
 .CX3A .miniMonth .cell.today .date {
@@ -328,7 +382,7 @@
 
 .CX3A .miniMonth caption {
   caption-side: top;
-  font-size: 150%;
+  font-size: 100%;
   text-align: right;
   font-weight: bold;
 }
