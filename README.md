@@ -1,22 +1,29 @@
 # MMM-CalendarExt3Agenda
 Daily agenda view module of MagicMirror
 
+**🆕 NEW: Self-Contained Calendar Fetching!** This module now supports built-in calendar fetching and no longer requires the default calendar module as a dependency.
 
 ## Screenshot
 <img src="https://raw.githubusercontent.com/MMRIZE/public_ext_storage/main/MMM-CalendarExt3Agenda/CX3A_110.png" width="800">
-
-
 
 ## Concept
 
 This is a sibling module of `[MMM-CalendarExt3](https://github.com/MMRIZE/MMM-CalendarExt3)`. This module is made to be an alternative to my previous module `MMM-CalendarExt2`, especially `daily`, `current` and `upcoming` views.
 
-
 ## Features
+### 🆕 Self-Contained Mode (NEW!)
+- **Built-in calendar fetching** - No longer requires the default `calendar` module
+- **Multiple calendar support** - Fetch from multiple iCal/CalDAV sources
+- **Comprehensive logging** - Both backend and frontend logging
+- **Authentication support** - Basic auth and Bearer token support
+- **Error handling** - Automatic retry with exponential backoff
+- **Per-calendar configuration** - Different settings for each calendar
+- **Self-contained utilities** - No external git submodule dependencies
+
 ### What's different with `CX2`.
-- Only focusing on how it shows; Parsing is delegated to the original MagicMirror module `calendar`. (It means the `calendar` module is REQUIRED to use this module.)
+- ~~Only focusing on how it shows; Parsing is delegated to the original MagicMirror module `calendar`. (It means the `calendar` module is REQUIRED to use this module.)~~ **Now supports self-contained operation!**
 - Respect to original MM's hide/show mechanism. Now you can hide/show this module easily with other scheduler or control modules. (By the way, Look at this module also. - [MMM-Scenes](https://github.com/MMRIZE/MMM-Scenes))
-- No dependency on the 3rd party modules (e.g. momentJS or Luxon, etc.). This is built with pure JS and CSS only.
+- No dependency on 3rd party modules or git submodules. This is built with pure JS and CSS only.
 
 ### Relation with `CX3`
 - Nothing. It is independent from `MMM-CalendarExt3`. But of course, you can use them together.
@@ -26,6 +33,8 @@ This is a sibling module of `[MMM-CalendarExt3](https://github.com/MMRIZE/MMM-Ca
 - locale-aware calendar
 - customizing events: filtering, transforming
 - multi-instance available. You don't need to copy and rename the module. Just add one more configuration in your `config.js`.
+- **Self-contained calendar fetching** (NEW!)
+- **Backward compatibility** with external calendar modules
 
 
 ## Install
@@ -57,16 +66,67 @@ git checkout dev-1.1.5
 ```
 
 ## Config
-Anyway, even this simplest will work.
+
+### 🆕 Self-Contained Configuration (Recommended)
+The simplest self-contained configuration:
 ```js
 {
   module: "MMM-CalendarExt3Agenda",
   position: "top_left",
-},
-
+  config: {
+    calendars: [
+      {
+        name: "My Calendar",
+        url: "https://calendar.google.com/calendar/ical/your-calendar-id/basic.ics",
+        color: "#1f77b4"
+      }
+    ]
+  }
+}
 ```
 
-More conventional;
+More advanced self-contained configuration:
+```js
+{
+  module: "MMM-CalendarExt3Agenda",
+  position: "top_left",
+  header: "My Agenda",
+  config: {
+    instanceId: "myCalendar",
+    locale: 'de-DE',
+    firstDayOfWeek: 1,
+    startDayIndex: -1,
+    endDayIndex: 10,
+    
+    // Self-contained calendar fetching
+    useExternalCalendarModule: false, // Default: false
+    calendars: [
+      {
+        name: "Personal",
+        url: "https://calendar.google.com/calendar/ical/personal@gmail.com/basic.ics",
+        color: "#1f77b4",
+        fetchInterval: 60000,
+        auth: {
+          user: "username",
+          pass: "password"
+        }
+      },
+      {
+        name: "Work",
+        url: "https://outlook.office365.com/owa/calendar/xxx/calendar.ics",
+        color: "#ff7f0e",
+        excludedEvents: ["Private"]
+      }
+    ],
+    fetchInterval: 60000, // Default for all calendars
+    maximumEntries: 10,
+    maximumNumberOfDays: 365
+  }
+}
+```
+
+### Legacy External Calendar Module Configuration
+If you prefer to use the old notification-based system with the builtin calendar module:
 ```js
 {
   module: "MMM-CalendarExt3Agenda",
@@ -77,7 +137,8 @@ More conventional;
     locale: 'de-DE',
     firstDayOfWeek: 1,
     startDayIndex: -1,
-		endDayIndex: 10,
+    endDayIndex: 10,
+    useExternalCalendarModule: true, // Enable external calendar notifications
     calendarSet: ['us_holiday', 'abfall', 'mytest'],
     ...
   }
@@ -109,12 +170,39 @@ You need setup default `calendar` configuration also.
 ### Config details
 All the properties are omittable, and if omitted, a default value will be applied.
 
+#### 🆕 Self-Contained Calendar Options (NEW!)
+|**property**|**default**|**description**|
+|---|---|---|
+|`useExternalCalendarModule`| false | Set to `true` to use the old notification-based system with external calendar modules. Set to `false` for self-contained operation. |
+|`calendars` | [] | Array of calendar configurations for self-contained mode. Each calendar object can have: `name`, `url`, `color`, `fetchInterval`, `maximumEntries`, `maximumNumberOfDays`, `pastDaysCount`, `broadcastPastEvents`, `excludedEvents`, `auth`, `selfSignedCert` |
+|`fetchInterval`| 60000 | Default fetch interval in milliseconds for all calendars. Can be overridden per calendar. |
+|`maximumEntries`| 10 | Default maximum number of events to fetch per calendar. Can be overridden per calendar. |
+|`maximumNumberOfDays`| 365 | Default maximum number of days in the future to fetch events. Can be overridden per calendar. |
+|`pastDaysCount`| 0 | Default number of days in the past to include events. Can be overridden per calendar. |
+|`broadcastPastEvents`| true | Default setting for including past events. Can be overridden per calendar. |
+|`excludedEvents`| [] | Default array of strings/patterns to exclude from events. Can be overridden per calendar. |
+
+#### Per-Calendar Configuration Options
+Each calendar in the `calendars` array can have these properties:
+- `name`: Display name for the calendar
+- `url`: iCal/CalDAV URL (supports webcal://, http://, https://)
+- `color`: Color for events from this calendar (CSS color value)
+- `fetchInterval`: How often to fetch this calendar (milliseconds)
+- `maximumEntries`: Max events to fetch from this calendar
+- `maximumNumberOfDays`: Max days in future to fetch
+- `pastDaysCount`: How many days in past to include
+- `broadcastPastEvents`: Include past events (boolean)
+- `excludedEvents`: Array of strings/patterns to exclude
+- `auth`: Authentication object with `user`/`pass` or `method`/`pass` for Bearer
+- `selfSignedCert`: Accept self-signed certificates (boolean)
+
+#### General Display Options
 |**property**|**default**|**description**|
 |---|---|---|
 |`startDayIndex`| 0 | Begining day of the view from today. `-1` means yesterday. `0` would be today. |
 |`endDayIndex` | 10 | Ending day of the view from today. `10` means 10 days after. |
 |`locale` | (`language` of MM config) | `de` or `ko-KR` or `ja-Jpan-JP-u-ca-japanese-hc-h12`. It defines how to handle and display your date-time values by the locale. When omitted, the default `language` config value of MM. |
-|`calendarSet` | [] | When you want to display only selected calendars, fulfil this array with the targeted calendar name(of the default `calendar` module). <br>e.g) `calendarSet: ['us_holiday', 'office'],`<br> `[]` or `null` will allow all the calendars. |
+|`calendarSet` | [] | When you want to display only selected calendars, fulfil this array with the targeted calendar name(of the default `calendar` module). <br>e.g) `calendarSet: ['us_holiday', 'office'],`<br> `[]` or `null` will allow all the calendars. **Note: Only used with `useExternalCalendarModule: true`** |
 |`instanceId` | (auto-generated) | When you want more than 1 instance of this module, each instance would need this value to distinguish each other. If you don't assign this property, the `identifier` of the module instance will be assigned automatically but not recommended to use it. (Hard to guess the auto-assigned value.)|
 |`firstDayOfWeek`| 1 | Monday is the first day of the week according to the international standard ISO 8601, but in the US, Canada, Japan and some cultures, it's counted as the second day of the week. If you want to start the week from Monday, set this property to `1`. If you want Sunday, set `0`. <br> Sunday:0, Monday:1, Tuesday:2, ..., Saturday:6 <br> **This option is only for using `calendarweek (CW)` showing. That is hidden by default, so you can ignore this.**|
 |`minimalDaysOfNewYear` | 4 | ISO 8601 also says **each week's year is the Gregorian year in which the Thursday falls**. The first week of the year, hence, always contains 4 January. However, the US (Yes, it is.) system differs from standards. In the US, **containing 1 January** defines the first week. In that case, set this value to `1`. And under some other culture, you might need to modify this.  <br> **This option is only for using `calendarweek (CW)` showing. That is hidden by default, so you can ignore this.**|
@@ -293,7 +381,20 @@ This example show how to transform Celcius temperature to Fahrenheit units. (Ori
 
 
 ## Tips
-- This module needs MM's original default module `calendar` or equivalent module which can parse and broadcast events. This module cannot handle events alone.
+
+### 🆕 Self-Contained vs External Calendar Module
+- **Self-Contained Mode (Recommended)**: Set `useExternalCalendarModule: false` (default) and configure the `calendars` array. The module will fetch calendar data independently.
+- **External Calendar Mode**: Set `useExternalCalendarModule: true` and use the traditional approach with MM's default `calendar` module.
+
+### Self-Contained Mode Benefits
+- ✅ No dependency on the default `calendar` module
+- ✅ Better error handling and retry logic  
+- ✅ Per-calendar configuration options
+- ✅ Comprehensive logging for troubleshooting
+- ✅ Support for multiple authentication methods
+
+### Legacy External Calendar Mode
+- ~~This module needs MM's original default module `calendar` or equivalent module which can parse and broadcast events. This module cannot handle events alone.~~ **Now optional with self-contained mode!**
 - When you want to hide default `calendar` module, just remove `position` of calendar module.
 - When you want to show past events, you need to configure `calendar` module to broadcast them.
 

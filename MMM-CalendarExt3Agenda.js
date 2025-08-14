@@ -41,9 +41,26 @@ Module.register('MMM-CalendarExt3Agenda', {
     eventPayload: (payload) => { return payload },
     useIconify: false,
     weekends: [],
-
     skipDuplicated: true,
     relativeNamedDayStyle: "narrow", // "narrow" or "short" or "long"
+
+    // NEW: Self-contained calendar fetching options
+    calendars: [], // Array of calendar configurations
+    fetchInterval: 60000, // Default fetch interval (1 minute)
+    maximumEntries: 10,
+    maximumNumberOfDays: 365,
+    pastDaysCount: 0,
+    broadcastPastEvents: true,
+    excludedEvents: [],
+    
+    // Symbol configuration (matching builtin calendar module)
+    defaultSymbol: "calendar-alt",
+    defaultSymbolClassName: "fas fa-",
+    recurringSymbol: "fa-repeat",
+    fullDaySymbol: "fa-clock",
+    customEvents: [], // Array of {keyword: "", symbol: ""} objects
+    
+    useExternalCalendarModule: false // Set to true to use old notification-based system
   },
 
   defaulNotifications: {
@@ -90,13 +107,26 @@ Module.register('MMM-CalendarExt3Agenda', {
     this.eventPool = new Map() // All the events
     //this.storedEvents = [] // regularized active events
     this.forecast = []
+    this.calendarFetchingStarted = false
 
     this.refreshTimer = null
 
     this._ready = false
 
+    // Log calendar configuration
+    if (this.activeConfig.calendars && this.activeConfig.calendars.length > 0) {
+      Log.info(`[${this.name}] Configured with ${this.activeConfig.calendars.length} calendars in self-contained mode`);
+      this.activeConfig.calendars.forEach((cal, index) => {
+        Log.info(`[${this.name}] Calendar ${index + 1}: ${cal.name || cal.url}`);
+      });
+    } else if (this.activeConfig.useExternalCalendarModule) {
+      Log.info(`[${this.name}] Using external calendar module notifications`);
+    } else {
+      Log.warn(`[${this.name}] No calendars configured and external module disabled`);
+    }
+
     let _moduleLoaded = new Promise((resolve, reject) => {
-      import('/' + this.file('CX3_Shared/CX3_shared.mjs')).then((m) => {
+      import('/' + this.file('shared-utilities.js')).then((m) => {
         this.library = m
         //this.library.initModule(this)
         if (this.activeConfig.useIconify) this.library.prepareIconify()
@@ -114,6 +144,12 @@ Module.register('MMM-CalendarExt3Agenda', {
     Promise.allSettled([_moduleLoaded, _domCreated]).then ((result) => {
       this._ready = true
       this.library.prepareMagic()
+      
+      // Start calendar fetching if we have calendars configured
+      if (this.activeConfig.calendars && this.activeConfig.calendars.length > 0 && !this.activeConfig.useExternalCalendarModule) {
+        this.startCalendarFetching();
+      }
+      
       //let {payload, sender} = result[1].value
       //this.fetch(payload, sender)
       setTimeout(() => {
@@ -123,7 +159,9 @@ Module.register('MMM-CalendarExt3Agenda', {
   },
 
   notificationReceived: function(notification, payload, sender) {
-    if (notification === this.notifications.eventNotification) {
+    // Only listen for external calendar events if explicitly configured to do so
+    if (this.activeConfig.useExternalCalendarModule && notification === this.notifications.eventNotification) {
+      Log.info(`[${this.name}] Received external calendar events from ${sender.identifier}`);
       let convertedPayload = this.notifications.eventPayload(payload)
       this.eventPool.set(sender.identifier, JSON.parse(JSON.stringify(convertedPayload)))
     }
@@ -500,4 +538,84 @@ Module.register('MMM-CalendarExt3Agenda', {
     dom = drawAgenda(prepareAgenda([...copied]))
     return dom
   },
+
+  /**
+   * Start self-contained calendar fetching
+   */
+  startCalendarFetching: function() {
+    if (this.calendarFetchingStarted) return;
+    
+    Log.info(`[${this.name}] Starting self-contained calendar fetching`);
+    
+    this.calendarFetchingStarted = true;
+    
+    this.sendSocketNotification("CALENDAR_FETCH_START", {
+      instanceId: this.activeConfig.instanceId,
+      calendars: this.activeConfig.calendars,
+      fetchInterval: this.activeConfig.fetchInterval,
+      maximumEntries: this.activeConfig.maximumEntries,
+      maximumNumberOfDays: this.activeConfig.maximumNumberOfDays,
+      pastDaysCount: this.activeConfig.pastDaysCount,
+      broadcastPastEvents: this.activeConfig.broadcastPastEvents,
+      excludedEvents: this.activeConfig.excludedEvents
+    });
+  },
+
+  /**
+   * Stop self-contained calendar fetching
+   */
+  stopCalendarFetching: function() {
+    if (!this.calendarFetchingStarted) return;
+    
+    Log.info(`[${this.name}] Stopping self-contained calendar fetching`);
+    
+    this.calendarFetchingStarted = false;
+    
+    this.sendSocketNotification("CALENDAR_FETCH_STOP", {
+      instanceId: this.activeConfig.instanceId
+    });
+  },
+
+  /**
+   * Handle socket notifications from node_helper
+   */
+  socketNotificationReceived: function(notification, payload) {
+    if (payload.instanceId !== this.activeConfig.instanceId) {
+      return; // Not for this instance
+    }
+
+    if (notification === "CALENDAR_EVENTS_FETCHED") {
+      Log.info(`[${this.name}] Received ${payload.events.length} events from calendar: ${payload.calendarName}`);
+      
+      // Store events in eventPool using calendarId as key
+      this.eventPool.set(payload.calendarId, JSON.parse(JSON.stringify(payload.events)));
+      
+      // Update the display
+      this.updateDom(this.activeConfig.animationSpeed);
+      
+    } else if (notification === "CALENDAR_FETCH_ERROR") {
+      Log.error(`[${this.name}] Calendar fetch error for ${payload.calendarName}: ${payload.error}`);
+      
+      // You could show an error indicator in the UI here if desired
+      // For now, we'll just log it
+    }
+  },
+
+  /**
+   * Override suspend to stop calendar fetching
+   */
+  suspend: function() {
+    Log.info(`[${this.name}] Module suspended`);
+    this.stopCalendarFetching();
+  },
+
+  /**
+   * Override resume to restart calendar fetching
+   */
+  resume: function() {
+    Log.info(`[${this.name}] Module resumed`);
+    if (this.activeConfig.calendars && this.activeConfig.calendars.length > 0 && !this.activeConfig.useExternalCalendarModule) {
+      this.startCalendarFetching();
+    }
+  }
 })

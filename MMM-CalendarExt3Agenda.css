@@ -5,7 +5,7 @@
 }
 
 .CX3A {
-  font-size: 16px;
+  /*font-size: 16px;*/
   min-width: 300px;
   max-width: 400px;
   text-align: left;
@@ -26,10 +26,10 @@
 
 .CX3A .agenda {
   position: relative;
-  max-height: 600px;
+/*  max-height: 600px; */
   overflow-y: hidden;
-  mask-image: linear-gradient(to bottom, transparent, black 10%);
-  -webkit-mask-image: -webkit-linear-gradient(90deg, transparent, black 10%);
+/*  mask-image: linear-gradient(to bottom, transparent, black 10%); */
+/*  -webkit-mask-image: -webkit-linear-gradient(90deg, transparent, black 10%);*/
 }
 
 /*

@@ -5,7 +5,7 @@
   "main": "MMM-CalendarExt3Agenda",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "postinstall": "git submodule update --init --recursive",
+    "postinstall": "git submodule update --init --recursive && npm install node-ical moment-timezone",
     "postupdate": "git submodule update --init --recursive"
   },
   "repository": {
@@ -22,5 +22,9 @@
   "bugs": {
     "url": "https://github.com/MMRIZE/MMM-CalendarExt3Agenda/issues"
   },
-  "homepage": "https://github.com/MMRIZE/MMM-CalendarExt3Agenda#readme"
+  "homepage": "https://github.com/MMRIZE/MMM-CalendarExt3Agenda#readme",
+  "dependencies": {
+    "moment-timezone": "^0.5.48",
+    "node-ical": "^0.18.0"
+  }
 }
