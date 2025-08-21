@@ -1,6 +1,8 @@
 const NodeHelper = require("node_helper");
 const Log = require("logger");
 const https = require("node:https");
+const http = require("node:http");
+const url = require("node:url");
 const ical = require("node-ical");
 const moment = require("moment-timezone");
 
@@ -241,17 +243,16 @@ class CalendarFetcher {
 	 */
 	fetchICalData() {
 		return new Promise((resolve, reject) => {
-			const nodeVersion = Number(process.version.match(/^v(\d+\.\d+)/)[1]);
+			// Enhanced headers that work better with Outlook and other calendar services
 			let headers = {
-				"User-Agent": `Mozilla/5.0 (Node.js ${nodeVersion}) MagicMirror/${global.version || "2.0"}`
+				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+				"Accept": "text/calendar,application/calendar+xml,text/plain,*/*",
+				"Accept-Language": "en-US,en;q=0.9",
+				"Accept-Encoding": "identity", // Don't use gzip to avoid issues
+				"Cache-Control": "no-cache",
+				"Pragma": "no-cache",
+				"Connection": "keep-alive"
 			};
-
-			let httpsAgent = null;
-			if (this.config.selfSignedCert) {
-				httpsAgent = new https.Agent({
-					rejectUnauthorized: false
-				});
-			}
 
 			// Add authentication if provided
 			if (this.config.auth) {
@@ -262,20 +263,65 @@ class CalendarFetcher {
 				}
 			}
 
-			const fetchOptions = {
+			const parsedUrl = new URL(this.url);
+			const isHttps = parsedUrl.protocol === 'https:';
+			const requestModule = isHttps ? https : http;
+
+			const options = {
+				hostname: parsedUrl.hostname,
+				port: parsedUrl.port || (isHttps ? 443 : 80),
+				path: parsedUrl.pathname + parsedUrl.search,
+				method: 'GET',
 				headers: headers,
-				agent: httpsAgent
+				timeout: 30000 // 30 second timeout
 			};
 
-			fetch(this.url, fetchOptions)
-				.then(response => {
-					if (!response.ok) {
-						throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+			if (this.config.selfSignedCert && isHttps) {
+				options.rejectUnauthorized = false;
+			}
+
+			const req = requestModule.request(options, (res) => {
+				let data = '';
+
+				// Handle redirects
+				if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
+					const redirectUrl = res.headers.location;
+					if (redirectUrl) {
+						Log.info(`[CalendarFetcher] Following redirect to: ${redirectUrl}`);
+						this.url = redirectUrl;
+						this.fetchICalData().then(resolve).catch(reject);
+						return;
 					}
-					return response.text();
-				})
-				.then(resolve)
-				.catch(reject);
+				}
+
+				if (res.statusCode !== 200) {
+					reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+					return;
+				}
+
+				res.on('data', (chunk) => {
+					data += chunk;
+				});
+
+				res.on('end', () => {
+					if (data.length === 0) {
+						reject(new Error('Empty response received'));
+						return;
+					}
+					resolve(data);
+				});
+			});
+
+			req.on('error', (error) => {
+				reject(new Error(`Network error: ${error.message}`));
+			});
+
+			req.on('timeout', () => {
+				req.destroy();
+				reject(new Error('Request timeout'));
+			});
+
+			req.end();
 		});
 	}
 
