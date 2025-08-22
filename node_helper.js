@@ -30,8 +30,18 @@ module.exports = NodeHelper.create({
 	startCalendarFetching(config) {
 		Log.info(`[${this.name}] Starting calendar fetching for instance: ${config.instanceId}`);
 
-		if (!config.calendars || !Array.isArray(config.calendars)) {
-			Log.error(`[${this.name}] No calendars configured for instance: ${config.instanceId}`);
+		if (!config.calendars || !Array.isArray(config.calendars) || config.calendars.length === 0) {
+			Log.info(`[${this.name}] No calendars configured for instance: ${config.instanceId}, sending empty events`);
+			
+			// Send empty events so the frontend can still display (e.g., mini-calendar)
+			this.sendSocketNotification("CALENDAR_EVENTS_FETCHED", {
+				instanceId: config.instanceId,
+				calendarId: 'no-calendars',
+				calendarName: 'No Calendars',
+				url: '',
+				events: [],
+				lastFetch: new Date().getTime()
+			});
 			return;
 		}
 
@@ -66,9 +76,6 @@ module.exports = NodeHelper.create({
 				fullDaySymbol: calendar.fullDaySymbol || config.fullDaySymbol || 'clock',
 				customEvents: calendar.customEvents || config.customEvents || []
 			};
-
-			// Debug color configuration
-			Log.info(`[${this.name}] Calendar: ${fetcherConfig.name} - color: ${fetcherConfig.color} (from calendar.color: ${calendar.color})`);
 
 			this.createFetcher(fetcherConfig);
 		});
@@ -333,7 +340,6 @@ class CalendarFetcher {
 	parseEvents(icalData) {
 		try {
 			const data = ical.parseICS(icalData);
-			Log.debug(`[CalendarFetcher] Parsed iCal data for ${this.config.name}`);
 			
 			return this.filterEvents(data);
 			
@@ -354,8 +360,6 @@ class CalendarFetcher {
 		const pastMoment = moment().subtract(this.config.pastDaysCount, "days");
 		const futureMoment = moment().add(this.config.maximumNumberOfDays, "days");
 
-		Log.debug(`[CalendarFetcher] Filtering events between ${pastMoment.format()} and ${futureMoment.format()}`);
-
 		for (const eventId in data) {
 			const event = data[eventId];
 			
@@ -364,7 +368,6 @@ class CalendarFetcher {
 			try {
 				// Check if event should be excluded
 				if (this.shouldEventBeExcluded(event.summary)) {
-					Log.debug(`[CalendarFetcher] Excluding event: ${event.summary}`);
 					continue;
 				}
 
@@ -429,10 +432,17 @@ class CalendarFetcher {
 	 * @param {moment} futureMoment Future date limit
 	 * @returns {object|null} Processed event or null if filtered out
 	 */
-	processSingleEvent(event, pastMoment, futureMoment) {
+	processSingleEvent(event, pastMoment, futureMoment) {		
 		const startDate = moment(event.start);
-		const endDate = event.end ? moment(event.end) : startDate.clone();
-
+		let endDate = event.end ? moment(event.end) : startDate.clone();
+		
+		// Fix for full-day events where start and end are the same date
+		// For full-day events, if start and end are the same, end should be start of next day
+		const isFullDay = this.isFullDayEvent(event, startDate, endDate);
+		if (isFullDay && startDate.isSame(endDate, 'day')) {
+			endDate = startDate.clone().add(1, 'day');
+		}
+		
 		// Check if event is within date range
 		if (endDate.isBefore(pastMoment) || startDate.isAfter(futureMoment)) {
 			return null;
@@ -518,9 +528,6 @@ class CalendarFetcher {
 
 		// Add symbol array like the builtin calendar module
 		eventObj.symbol = this.symbolsForEvent(eventObj);
-		
-		// Debug color in events
-		Log.info(`[CalendarFetcher] Event "${eventObj.title}" - color: ${eventObj.color} (from config: ${this.config.color})`);
 		
 		return eventObj;
 	}

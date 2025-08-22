@@ -112,6 +112,7 @@ Module.register('MMM-CalendarExt3Agenda', {
     this.refreshTimer = null
 
     this._ready = false
+    this._pendingNotifications = [] // Queue for early notifications
 
     // Log calendar configuration
     if (this.activeConfig.calendars && this.activeConfig.calendars.length > 0) {
@@ -143,19 +144,71 @@ Module.register('MMM-CalendarExt3Agenda', {
 
     Promise.allSettled([_moduleLoaded, _domCreated]).then ((result) => {
       this._ready = true
+      this.library.loaded = true; // Explicitly set loaded flag
       this.library.prepareMagic()
+      
+      // Process any queued notifications that came in early
+      this._processPendingNotifications();
       
       // Start calendar fetching if we have calendars configured
       if (this.activeConfig.calendars && this.activeConfig.calendars.length > 0 && !this.activeConfig.useExternalCalendarModule) {
         this.startCalendarFetching();
+      } else {
+        // Even with no calendars, trigger the backend to send empty events
+        // so the module can display (e.g., mini-calendar)
+        if (!this.activeConfig.useExternalCalendarModule) {
+          this.startCalendarFetching();
+        }
       }
       
       //let {payload, sender} = result[1].value
       //this.fetch(payload, sender)
       setTimeout(() => {
-        this.updateDom(this.activeConfig.animationSpeed)
+        this.updateDom(100) // Use short animation during initialization
       }, this.activeConfig.waitFetch)
     })
+  },
+
+  /**
+   * Process any socket notifications that came in before the module was ready
+   */
+  _processPendingNotifications: function() {
+    if (this._pendingNotifications.length > 0) {
+      Log.info(`[${this.name}] Processing ${this._pendingNotifications.length} pending notifications`);
+      this._pendingNotifications.forEach(item => {
+        this._handleSocketNotification(item.notification, item.payload);
+      });
+      this._pendingNotifications = [];
+    }
+  },
+
+  /**
+   * Handle socket notifications (used for both immediate and queued processing)
+   */
+  _handleSocketNotification: function(notification, payload) {
+    if (notification === "CALENDAR_EVENTS_FETCHED") {
+      Log.info(`[${this.name}] Received ${payload.events.length} events from calendar: ${payload.calendarName} (calendarId: ${payload.calendarId})`);
+      
+      if (payload.events.length > 0) {
+        payload.events.forEach((event, index) => {
+          Log.info(`[${this.name}] Event ${index + 1}: ${event.title}`);
+        });
+      }
+      
+      // Store events in eventPool using calendarId as key
+      this.eventPool.set(payload.calendarId, JSON.parse(JSON.stringify(payload.events)));
+      
+      Log.info(`[${this.name}] EventPool now has ${this.eventPool.size} calendars with total events: ${Array.from(this.eventPool.values()).reduce((sum, events) => sum + events.length, 0)}`);
+      
+      // Update the display
+      this.updateDom(100); // Use short animation to avoid race conditions
+      
+    } else if (notification === "CALENDAR_FETCH_ERROR") {
+      Log.error(`[${this.name}] Calendar fetch error for ${payload.calendarName}: ${payload.error}`);
+      
+      // You could show an error indicator in the UI here if desired
+      // For now, we'll just log it
+    }
   },
 
   notificationReceived: function(notification, payload, sender) {
@@ -255,7 +308,9 @@ Module.register('MMM-CalendarExt3Agenda', {
         let ebd = events.reduce((days, ev) => {
           let st = new Date(+ev.startDate)
           let et = new Date(+ev.endDate)
-          if (et.getTime() <= startTime) return days
+          if (et.getTime() <= startTime) {
+            return days
+          }
 
           while(st.getTime() < et.getTime()) {
             let day = new Date(st.getFullYear(), st.getMonth(), st.getDate(), 0, 0, 0, 0).getTime()
@@ -296,7 +351,8 @@ Module.register('MMM-CalendarExt3Agenda', {
         }, new Set()) ]
       } else {
         events = targetEvents.filter((ev) => {
-          return !(ev.endDate <= boc || ev.startDate >= eoc)
+          const result = !(ev.endDate <= boc || ev.startDate >= eoc)
+          return result
         })
         for (let i = options.startDayIndex; i <= options.endDayIndex; i++) {
           dateIndex.push(getRelativeDate(moment, i).getTime())
@@ -409,8 +465,12 @@ Module.register('MMM-CalendarExt3Agenda', {
         }
         agenda.appendChild(dayDom)
       }
-      dom.appendChild(agenda)
-      return dom
+      
+      // Create a new DOM structure instead of appending to existing DOM
+      let newDom = document.createElement('div')
+      newDom.className = dom.className
+      newDom.appendChild(agenda)
+      return newDom
     }
 
     const drawMiniMonth = (events) => {
@@ -589,8 +649,21 @@ Module.register('MMM-CalendarExt3Agenda', {
       ]
     })
     const copied = JSON.parse(JSON.stringify(targetEvents))
-    dom = drawMiniMonth([...copied])
-    dom = drawAgenda(prepareAgenda([...copied]))
+    
+    // Draw mini-calendar first (if enabled)
+    if (options.showMiniMonthCalendar) {
+      const miniCalDom = drawMiniMonth([...copied])
+      dom.appendChild(miniCalDom.querySelector('.miniMonth'))
+    }
+    
+    const agendaData = prepareAgenda([...copied])
+    const agendaDom = drawAgenda(agendaData)
+    
+    // Append agenda to DOM
+    if (agendaDom && agendaDom.querySelector('.agenda')) {
+      dom.appendChild(agendaDom.querySelector('.agenda'))
+    }
+    
     return dom
   },
 
@@ -640,21 +713,15 @@ Module.register('MMM-CalendarExt3Agenda', {
       return; // Not for this instance
     }
 
-    if (notification === "CALENDAR_EVENTS_FETCHED") {
-      Log.info(`[${this.name}] Received ${payload.events.length} events from calendar: ${payload.calendarName}`);
-      
-      // Store events in eventPool using calendarId as key
-      this.eventPool.set(payload.calendarId, JSON.parse(JSON.stringify(payload.events)));
-      
-      // Update the display
-      this.updateDom(this.activeConfig.animationSpeed);
-      
-    } else if (notification === "CALENDAR_FETCH_ERROR") {
-      Log.error(`[${this.name}] Calendar fetch error for ${payload.calendarName}: ${payload.error}`);
-      
-      // You could show an error indicator in the UI here if desired
-      // For now, we'll just log it
+    // If module isn't ready yet, queue the notification for later processing
+    if (!this._ready || !this.library?.loaded) {
+      Log.info(`[${this.name}] Module not ready yet, queueing notification: ${notification}`);
+      this._pendingNotifications.push({ notification, payload });
+      return;
     }
+
+    // Process the notification immediately if we're ready
+    this._handleSocketNotification(notification, payload);
   },
 
   /**

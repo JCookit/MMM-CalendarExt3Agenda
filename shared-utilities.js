@@ -29,11 +29,25 @@ const getContrastYIQ = (rgba) => {
  * @returns Date
  */
 const convertVarious2UnixTime = (unknown) => {
+  console.log(`[convertVarious2UnixTime] Input:`, unknown, `(type: ${typeof unknown})`);
+  
   try {
-    if (typeof unknown === 'number') return unknown
-    if (typeof unknown === 'string' && unknown == +unknown) return +unknown
+    if (typeof unknown === 'number') {
+      console.log(`[convertVarious2UnixTime] Already a number, returning:`, unknown);
+      return unknown;
+    }
+    if (typeof unknown === 'string' && unknown == +unknown) {
+      console.log(`[convertVarious2UnixTime] String number, converting:`, +unknown);
+      return +unknown;
+    }
     console.log("MMM-CalendarExt3Agenda.convertVarious2UnixTime : Incompatible date value", unknown)
-    return new Date(unknown)?.getTime() || null
+    
+    let dateObj = new Date(unknown);
+    let timestamp = dateObj?.getTime();
+    
+    console.log(`[convertVarious2UnixTime] Date parsing - new Date(${unknown}) = ${dateObj}, timestamp = ${timestamp}, isValid = ${!isNaN(timestamp)}`);
+    
+    return timestamp || null
   } catch (e) {
     console.error("MMM-CalendarExt3Agenda.convertVarious2UnixTime : Invalid date value", unknown, e)
     return null
