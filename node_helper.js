@@ -426,15 +426,79 @@ class CalendarFetcher {
 	}
 
 	/**
+	 * Parse event date with fallback for non-standard timezones
+	 * @param {Date|object} eventDate Original event date
+	 * @returns {moment} Parsed moment object
+	 */
+	parseEventDate(eventDate) {
+		if (!eventDate) return null;
+		
+		// Handle Microsoft custom timezone - check the raw event data for the problematic timezone
+		// If we detect "tzone://Microsoft/Custom", treat the time as local
+		if (eventDate && typeof eventDate === 'object' && eventDate.tz === 'tzone://Microsoft/Custom') {
+			Log.info(`[CalendarFetcher] Microsoft Custom Timezone detected, using local time interpretation`);
+			// Extract just the date/time components and interpret as local
+			const dateStr = eventDate.toISOString ? eventDate.toISOString() : eventDate.toString();
+			const localMoment = moment(dateStr).local();
+			Log.info(`[CalendarFetcher] Converted to local: ${localMoment.format('YYYY-MM-DD HH:mm:ss')}`);
+			return localMoment;
+		}
+		
+		try {
+			// First attempt normal parsing
+			const parsed = moment(eventDate);
+			
+			// Check if parsing was successful
+			if (parsed.isValid()) {
+				return parsed;
+			}
+		} catch (error) {
+			Log.warn(`[CalendarFetcher] Date parsing error: ${error.message}`);
+		}
+		
+		// For non-standard timezones (like Microsoft's tzone://Microsoft/Custom),
+		// extract the raw date/time and interpret as local time
+		if (eventDate && typeof eventDate === 'object') {
+			// If it's a Date object or has date components, try manual construction
+			if (eventDate.getFullYear && typeof eventDate.getFullYear === 'function') {
+				// It's a Date object - extract components and create local moment
+				return moment([
+					eventDate.getFullYear(),
+					eventDate.getMonth(),
+					eventDate.getDate(),
+					eventDate.getHours(),
+					eventDate.getMinutes(),
+					eventDate.getSeconds()
+				]);
+			}
+			
+			// If it has date components as properties, use those
+			if (eventDate.year !== undefined || eventDate.month !== undefined) {
+				return moment([
+					eventDate.year || new Date().getFullYear(),
+					(eventDate.month || 1) - 1, // moment months are 0-based
+					eventDate.day || eventDate.date || 1,
+					eventDate.hour || 0,
+					eventDate.minute || 0,
+					eventDate.second || 0
+				]);
+			}
+		}
+		
+		// Final fallback - treat as local time
+		return moment(eventDate);
+	}
+
+	/**
 	 * Process a single (non-recurring) event
 	 * @param {object} event Event data
 	 * @param {moment} pastMoment Past date limit
 	 * @param {moment} futureMoment Future date limit
 	 * @returns {object|null} Processed event or null if filtered out
 	 */
-	processSingleEvent(event, pastMoment, futureMoment) {		
-		const startDate = moment(event.start);
-		let endDate = event.end ? moment(event.end) : startDate.clone();
+	processSingleEvent(event, pastMoment, futureMoment) {
+		const startDate = this.parseEventDate(event.start);
+		let endDate = event.end ? this.parseEventDate(event.end) : startDate.clone();
 		
 		// Fix for full-day events where start and end are the same date
 		// For full-day events, if start and end are the same, end should be start of next day
@@ -463,8 +527,8 @@ class CalendarFetcher {
 		
 		try {
 			// Get duration of original event
-			const originalStart = moment(event.start);
-			const originalEnd = event.end ? moment(event.end) : originalStart.clone();
+			const originalStart = this.parseEventDate(event.start);
+			const originalEnd = event.end ? this.parseEventDate(event.end) : originalStart.clone();
 			const duration = originalEnd.diff(originalStart);
 
 			// Generate recurring dates
@@ -608,32 +672,31 @@ class CalendarFetcher {
 	 * @returns {boolean} True if full day event
 	 */
 	isFullDayEvent(event, startDate, endDate) {
-		// First check if the original event has DATE-only fields (no time component)
+		// First check Microsoft all-day event flag - this is most reliable
+		if (event['X-MICROSOFT-CDO-ALLDAYEVENT'] === 'TRUE') {
+			return true;
+		}
+		
+		// Explicitly check for FALSE flag to avoid false positives
+		if (event['X-MICROSOFT-CDO-ALLDAYEVENT'] === 'FALSE') {
+			return false;
+		}
+		
+		// Check if the original event has DATE-only fields (no time component)
 		// This is the most reliable indicator of a full-day event
 		if (event.start && event.start.dateOnly) {
 			return true;
 		}
 		
-		// Check Microsoft all-day event flag
-		if (event['X-MICROSOFT-CDO-ALLDAYEVENT'] === 'TRUE') {
-			return true;
-		}
-		
-		// Check if the event start/end times indicate full day
-		if (event.start && typeof event.start.getUTCHours === 'function') {
-			const isUTCFullDay = event.start.getUTCHours() === 0 && 
-			                     event.start.getUTCMinutes() === 0 && 
-			                     event.start.getUTCSeconds() === 0;
-			return isUTCFullDay;
-		}
-		
-		// Fallback: check if start and end are at midnight in local time
-		// and duration is exactly 24 hours (typical all-day event pattern)
+		// Use the moment.js parsed times (startDate/endDate parameters) instead of raw event times
+		// since node-ical might parse Microsoft timezones incorrectly
 		const startIsLocalMidnight = startDate.hour() === 0 && startDate.minute() === 0 && startDate.second() === 0;
 		const endIsLocalMidnight = endDate.hour() === 0 && endDate.minute() === 0 && endDate.second() === 0;
 		const durationHours = endDate.diff(startDate, 'hours');
 		const isExact24Hours = durationHours === 24;
 		const isMidnightFullDay = startIsLocalMidnight && endIsLocalMidnight && isExact24Hours;
+		
+		return isMidnightFullDay;
 		
 		return isMidnightFullDay;
 	}
