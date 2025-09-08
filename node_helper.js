@@ -531,12 +531,50 @@ class CalendarFetcher {
 			const originalEnd = event.end ? this.parseEventDate(event.end) : originalStart.clone();
 			const duration = originalEnd.diff(originalStart);
 
-			// Generate recurring dates
+			// First, check if the original start date should be included (first occurrence)
+			if (originalStart.isBetween(pastMoment, futureMoment, null, '[]')) {
+				const firstEvent = this.createEventObject(event, originalStart, originalEnd, true);
+				if (firstEvent) {
+					events.push(firstEvent);
+				}
+			}
+			
+			// Generate recurring dates (future occurrences)
 			const dates = event.rrule.between(pastMoment.toDate(), futureMoment.toDate(), true);
 			
 			dates.forEach(date => {
-				const startDate = moment(date);
+				// The issue: RRULE generates correct dates in UTC, but applying timezone offset 
+				// shifts the day incorrectly. Instead, we need to:
+				// 1. Get the DATE portion from RRULE (ignore time)
+				// 2. Apply the original event's TIME and TIMEZONE to that date
+				
+				const utcRruleDate = moment.utc(date);
+				
+				// Extract just the date components (year, month, day) from RRULE
+				// But interpret them in the original timezone, not UTC
+				const rruleYear = utcRruleDate.year();
+				const rruleMonth = utcRruleDate.month();
+				const rruleDay = utcRruleDate.date();
+				
+				// Create a new moment in the original timezone with:
+				// - Date from RRULE (interpreted in local timezone)
+				// - Time from original event
+				const originalOffset = originalStart.utcOffset();
+				const startDate = moment()
+					.utcOffset(originalOffset)      // Set to original timezone
+					.year(rruleYear)                // Use RRULE's year
+					.month(rruleMonth)              // Use RRULE's month  
+					.date(rruleDay)                 // Use RRULE's day
+					.hour(originalStart.hour())     // Use original hour
+					.minute(originalStart.minute()) // Use original minute
+					.second(originalStart.second()); // Use original second
+				
 				const endDate = startDate.clone().add(duration, 'milliseconds');
+				
+				// Skip if this date is the same as the original start (avoid duplicates)
+				if (startDate.isSame(originalStart, 'minute')) {
+					return;
+				}
 				
 				const recurringEvent = this.createEventObject(event, startDate, endDate, true);
 				if (recurringEvent) {
