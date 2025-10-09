@@ -489,6 +489,8 @@ class CalendarFetcher {
 		return moment(eventDate);
 	}
 
+
+
 	/**
 	 * Process a single (non-recurring) event
 	 * @param {object} event Event data
@@ -531,8 +533,27 @@ class CalendarFetcher {
 			const originalEnd = event.end ? this.parseEventDate(event.end) : originalStart.clone();
 			const duration = originalEnd.diff(originalStart);
 
+			// Parse EXDATE (exception dates) if present
+			const excludedDates = [];
+			if (event.exdate) {
+				// node-ical parses EXDATE as an object with date keys and Date objects as values
+				// e.g., { '2025-10-09': Date object with tz property, '2025-10-13': Date object with tz property }
+				for (const dateKey in event.exdate) {
+					const exdateValue = event.exdate[dateKey];
+					// Use existing parseEventDate - it already handles Date objects with timezone info
+					const parsedExdate = this.parseEventDate(exdateValue);
+					if (parsedExdate) {
+						excludedDates.push(parsedExdate);
+					}
+				}
+			}
+
 			// First, check if the original start date should be included (first occurrence)
-			if (originalStart.isBetween(pastMoment, futureMoment, null, '[]')) {
+			// But exclude it if it's in the EXDATE list
+			const isOriginalExcluded = excludedDates.some(exdate => 
+				originalStart.isSame(exdate, 'minute'));
+			
+			if (!isOriginalExcluded && originalStart.isBetween(pastMoment, futureMoment, null, '[]')) {
 				const firstEvent = this.createEventObject(event, originalStart, originalEnd, true);
 				if (firstEvent) {
 					events.push(firstEvent);
@@ -573,6 +594,13 @@ class CalendarFetcher {
 				
 				// Skip if this date is the same as the original start (avoid duplicates)
 				if (startDate.isSame(originalStart, 'minute')) {
+					return;
+				}
+				
+				// Skip if this date is excluded by EXDATE
+				const isExcluded = excludedDates.some(exdate => 
+					startDate.isSame(exdate, 'minute'));
+				if (isExcluded) {
 					return;
 				}
 				
