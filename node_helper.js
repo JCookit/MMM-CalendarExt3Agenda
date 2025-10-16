@@ -371,9 +371,15 @@ class CalendarFetcher {
 					continue;
 				}
 
+				// Skip events that are exception instances (have RECURRENCE-ID)
+				// These will be processed as part of their parent recurring event via event.recurrences
+				if (event.recurrenceid) {
+					continue;
+				}
+
 				// Process single or recurring events
 				if (event.rrule && event.rrule.between) {
-					// Recurring event
+					// Recurring event (node-ical automatically attaches exception instances to event.recurrences)
 					const recurringEvents = this.processRecurringEvent(event, pastMoment, futureMoment);
 					events.push(...recurringEvents);
 				} else {
@@ -522,9 +528,10 @@ class CalendarFetcher {
 	 * @param {object} event Event data
 	 * @param {moment} pastMoment Past date limit
 	 * @param {moment} futureMoment Future date limit
+	 * @param {Array} exceptions Array of exception instances (RECURRENCE-ID events)
 	 * @returns {Array} Array of recurring event instances
 	 */
-	processRecurringEvent(event, pastMoment, futureMoment) {
+	processRecurringEvent(event, pastMoment, futureMoment, exceptions = []) {
 		const events = [];
 		
 		try {
@@ -548,6 +555,20 @@ class CalendarFetcher {
 				}
 			}
 
+			// Parse RECURRENCE-ID exception instances (stored in event.recurrences by node-ical)
+			// These are dates that have been overridden by exception events with different times
+			if (event.recurrences) {
+				for (const recurrenceKey in event.recurrences) {
+					const recurrenceEvent = event.recurrences[recurrenceKey];
+					if (recurrenceEvent.recurrenceid) {
+						const recurrenceIdDate = this.parseEventDate(recurrenceEvent.recurrenceid);
+						if (recurrenceIdDate) {
+							excludedDates.push(recurrenceIdDate);
+						}
+					}
+				}
+			}
+			
 			// First, check if the original start date should be included (first occurrence)
 			// But exclude it if it's in the EXDATE list
 			const isOriginalExcluded = excludedDates.some(exdate => 
@@ -609,6 +630,25 @@ class CalendarFetcher {
 					events.push(recurringEvent);
 				}
 			});
+			
+			// Add exception events (RECURRENCE-ID instances) that override specific occurrences
+			if (event.recurrences) {
+				for (const recurrenceKey in event.recurrences) {
+					const recurrenceEvent = event.recurrences[recurrenceKey];
+					
+					// Parse the exception event's start and end dates
+					const exceptionStart = this.parseEventDate(recurrenceEvent.start);
+					const exceptionEnd = recurrenceEvent.end ? this.parseEventDate(recurrenceEvent.end) : exceptionStart.clone().add(duration, 'milliseconds');
+					
+					// Check if exception event is within date range
+					if (exceptionStart.isBetween(pastMoment, futureMoment, null, '[]')) {
+						const exceptionEventObj = this.createEventObject(recurrenceEvent, exceptionStart, exceptionEnd, true);
+						if (exceptionEventObj) {
+							events.push(exceptionEventObj);
+						}
+					}
+				}
+			}
 			
 		} catch (error) {
 			Log.warn(`[CalendarFetcher] Error processing recurring event:`, error);
