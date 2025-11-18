@@ -439,6 +439,19 @@ class CalendarFetcher {
 	parseEventDate(eventDate) {
 		if (!eventDate) return null;
 		
+		// Handle timezone-aware Date objects from node-ical (DST fix)
+		if (eventDate && typeof eventDate === 'object' && eventDate.tz && typeof eventDate.tz === 'string') {
+			// Extract date/time components and create in the specified timezone
+			const year = eventDate.getFullYear();
+			const month = eventDate.getMonth();
+			const date = eventDate.getDate();
+			const hour = eventDate.getHours();
+			const minute = eventDate.getMinutes();
+			const second = eventDate.getSeconds();
+			
+			return moment.tz([year, month, date, hour, minute, second], eventDate.tz);
+		}
+		
 		// Handle Microsoft custom timezone - check the raw event data for the problematic timezone
 		// If we detect "tzone://Microsoft/Custom", treat the time as local
 		if (eventDate && typeof eventDate === 'object' && eventDate.tz === 'tzone://Microsoft/Custom') {
@@ -585,31 +598,36 @@ class CalendarFetcher {
 			const dates = event.rrule.between(pastMoment.toDate(), futureMoment.toDate(), true);
 			
 			dates.forEach(date => {
-				// The issue: RRULE generates correct dates in UTC, but applying timezone offset 
-				// shifts the day incorrectly. Instead, we need to:
-				// 1. Get the DATE portion from RRULE (ignore time)
-				// 2. Apply the original event's TIME and TIMEZONE to that date
+				// DST Fix: RRULE generates UTC times but we need to preserve local time
+				// across DST transitions. The key is to use the timezone name, not offset.
 				
-				const utcRruleDate = moment.utc(date);
+				let startDate;
+				const originalTimezone = originalStart.tz();
 				
-				// Extract just the date components (year, month, day) from RRULE
-				// But interpret them in the original timezone, not UTC
-				const rruleYear = utcRruleDate.year();
-				const rruleMonth = utcRruleDate.month();
-				const rruleDay = utcRruleDate.date();
-				
-				// Create a new moment in the original timezone with:
-				// - Date from RRULE (interpreted in local timezone)
-				// - Time from original event
-				const originalOffset = originalStart.utcOffset();
-				const startDate = moment()
-					.utcOffset(originalOffset)      // Set to original timezone
-					.year(rruleYear)                // Use RRULE's year
-					.month(rruleMonth)              // Use RRULE's month  
-					.date(rruleDay)                 // Use RRULE's day
-					.hour(originalStart.hour())     // Use original hour
-					.minute(originalStart.minute()) // Use original minute
-					.second(originalStart.second()); // Use original second
+				if (originalTimezone) {
+					// Extract date components from RRULE (in UTC)
+					const utcRruleDate = moment.utc(date);
+					
+					// Extract time components from original event
+					const originalHour = originalStart.hour();
+					const originalMinute = originalStart.minute();
+					const originalSecond = originalStart.second();
+					
+					// Create occurrence at same LOCAL time on RRULE date in original timezone
+					// This automatically handles DST - moment.tz() will use the correct offset
+					// for the specific date (PST in Nov, PDT in Aug)
+					startDate = moment.tz(originalTimezone)
+						.year(utcRruleDate.year())
+						.month(utcRruleDate.month())
+						.date(utcRruleDate.date())
+						.hour(originalHour)
+						.minute(originalMinute)
+						.second(originalSecond)
+						.millisecond(0);
+				} else {
+					// Fallback for events without timezone
+					startDate = moment(date);
+				}
 				
 				const endDate = startDate.clone().add(duration, 'milliseconds');
 				
