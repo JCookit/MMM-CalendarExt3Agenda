@@ -43,6 +43,7 @@ Module.register('MMM-CalendarExt3Agenda', {
     weekends: [],
     skipDuplicated: true,
     relativeNamedDayStyle: "narrow", // "narrow" or "short" or "long"
+    maxNumberOfAgendaLines: null, // Maximum number of visual lines to display in agenda (null = no limit)
 
     // NEW: Self-contained calendar fetching options
     calendars: [], // Array of calendar configurations
@@ -433,11 +434,14 @@ Module.register('MMM-CalendarExt3Agenda', {
       let agenda = document.createElement('div')
       agenda.classList.add('agenda')
       dateIndex = dateIndex.sort((a, b) => a - b)
+      
+      let currentLineCount = 0
+      const maxLines = options.maxNumberOfAgendaLines
+      
       for (const [i, date] of dateIndex.entries()) {
         let tm = new Date(date)
         let eotm = new Date(tm.getFullYear(), tm.getMonth(), tm.getDate(), 23, 59, 59, 999)
-        let dayDom = makeCellDom(tm, i)
-        let body = dayDom.getElementsByClassName('cellBody')[0]
+        
         let {fevs, sevs} = events.filter((ev) => {
           return !(ev.endDate <= tm.getTime() || ev.startDate >= eotm.getTime())
         }).reduce((result, ev) => {
@@ -445,14 +449,62 @@ Module.register('MMM-CalendarExt3Agenda', {
           target.push(ev)
           return result
         }, {fevs: [], sevs: []})
+        
         let eventCounts = fevs.length + sevs.length
+        
+        // Skip days with no events if we're at the line limit
+        if (eventCounts === 0) {
+          if (maxLines && currentLineCount >= maxLines) {
+            break
+          }
+          // If no events, still count the date header as 1 line
+          if (maxLines && currentLineCount + 1 > maxLines) {
+            break
+          }
+        } else {
+          // Check if we have room for day header + first event
+          let firstEventLines = 1 // Day header
+          let allEvents = [...fevs, ...sevs] // Combine all events for this day
+          if (allEvents.length > 0) {
+            let firstEvent = allEvents[0]
+            firstEventLines += 1 // First event line
+            if (!firstEvent.isFullday && firstEvent.location && firstEvent.location.trim() !== '') {
+              firstEventLines += 1 // Location line for first event
+            }
+          }
+          
+          // If we can't fit the day header + first event, skip this entire day
+          if (maxLines && currentLineCount + firstEventLines > maxLines) {
+            break
+          }
+        }
+        
+        let dayDom = makeCellDom(tm, i)
+        let body = dayDom.getElementsByClassName('cellBody')[0]
+        
         dayDom.dataset.eventsCounts = eventCounts
         if (eventCounts === 0) dayDom.classList.add('noEvents')
+        
+        // Count the date header line
+        currentLineCount += 1
+        
         for (const [ key, value ] of Object.entries({ 'fullday': fevs, 'single': sevs })) {
           let tDom = document.createElement('div')
           tDom.classList.add(key)
           for (let e of value) {
             if (e?.skip) continue
+            
+            // Calculate lines needed for this event
+            let eventLines = 1 // Event line
+            if (key === 'single' && e.location && e.location.trim() !== '') {
+              eventLines += 1 // Location line
+            }
+            
+            // Check if we have room for this complete event
+            if (maxLines && currentLineCount + eventLines > maxLines) {
+              break // Skip this and remaining events in this category
+            }
+            
             let ev = renderEventAgenda(e, {
               useSymbol: options.useSymbol,
               eventTimeOptions: options.eventTimeOptions,
@@ -460,6 +512,9 @@ Module.register('MMM-CalendarExt3Agenda', {
               useIconify: options.useIconify,
             }, tm)
             tDom.appendChild(ev)
+            
+            // Count the lines we just added
+            currentLineCount += eventLines
           }
           body.appendChild(tDom)
         }
